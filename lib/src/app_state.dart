@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import 'default_models.dart';
 import 'models.dart';
 import 'runtime.dart';
 import 'server.dart';
@@ -112,14 +113,33 @@ class ModelsNotifier extends StateNotifier<List<ModelDescriptor>> {
   final ModelImporter _importer;
   final RuntimeManager _runtimeManager;
 
-  Future<void> load() async => state = await _store.load();
+  Future<void> load() async {
+    final stored = await _store.load();
+    state = DefaultModels.mergeWithInstalled(stored);
+    await _persist();
+  }
 
   Future<ModelDescriptor?> import({ModelType? type}) async {
     final descriptor = await _importer.pickAndImport(expectedType: type);
     if (descriptor == null) return null;
-    state = [...state, descriptor];
+
+    final sameType = state.where((m) => m.type == descriptor.type).toList();
+    final hasInstalledDefault = sameType.any(
+      (m) => m.isDefault && !m.path.startsWith('preset://'),
+    );
+    final imported = hasInstalledDefault
+        ? descriptor
+        : descriptor.copyWith(isDefault: true);
+
+    state = [
+      for (final model in state)
+        if (!(model.type == descriptor.type &&
+            model.path.startsWith('preset://')))
+          model,
+      imported,
+    ];
     await _persist();
-    return descriptor;
+    return imported;
   }
 
   Future<void> rename(String id, String name) async {
@@ -148,6 +168,14 @@ class ModelsNotifier extends StateNotifier<List<ModelDescriptor>> {
   Future<void> toggleLoaded(String id) async {
     final index = state.indexWhere((model) => model.id == id);
     if (index < 0) return;
+
+    final model = state[index];
+    if (model.path.startsWith('preset://')) {
+      throw StateError(
+        '${model.name} is the configured default preset, but its model files are not installed yet. Use Add model to install/replace it.',
+      );
+    }
+
     if (!_runtimeManager.bridge.available) {
       throw StateError(
         'Native runtime bridge is not linked. Build libeburon_runtime for this platform first.',
@@ -164,20 +192,23 @@ class ModelsNotifier extends StateNotifier<List<ModelDescriptor>> {
     final model = state.where((item) => item.id == id).firstOrNull;
     if (model == null) return;
 
-    final type = FileSystemEntity.typeSync(model.path);
-    if (type == FileSystemEntityType.directory) {
-      final directory = Directory(model.path);
-      if (await directory.exists()) await directory.delete(recursive: true);
-    } else if (type == FileSystemEntityType.file) {
-      final file = File(model.path);
-      if (await file.exists()) {
-        final parent = file.parent;
-        await file.delete();
-        if (await parent.exists()) await parent.delete(recursive: true);
+    if (!model.path.startsWith('preset://')) {
+      final type = FileSystemEntity.typeSync(model.path);
+      if (type == FileSystemEntityType.directory) {
+        final directory = Directory(model.path);
+        if (await directory.exists()) await directory.delete(recursive: true);
+      } else if (type == FileSystemEntityType.file) {
+        final file = File(model.path);
+        if (await file.exists()) {
+          final parent = file.parent;
+          await file.delete();
+          if (await parent.exists()) await parent.delete(recursive: true);
+        }
       }
     }
 
-    state = state.where((item) => item.id != id).toList(growable: false);
+    final remaining = state.where((item) => item.id != id).toList(growable: false);
+    state = DefaultModels.mergeWithInstalled(remaining);
     await _persist();
   }
 
