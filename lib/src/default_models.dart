@@ -47,21 +47,74 @@ class DefaultModels {
   );
 
   static const tts = ModelDescriptor(
-    id: 'preset-sherpa-vits-multilingual',
-    name: 'Sherpa VITS Multilingual',
+    id: 'preset-supertonic-3',
+    name: 'Supertonic 3',
     type: ModelType.tts,
-    runtime: RuntimeKind.sherpaOnnx,
-    architecture: 'vits',
+    runtime: RuntimeKind.supertonicOnnx,
+    architecture: 'supertonic-3',
     format: ModelFormat.onnxPackage,
     sizeBytes: 0,
-    path: 'preset://tts/sherpa-vits-multilingual',
-    languages: ['multilingual'],
-    capabilities: ['speech', 'streaming'],
+    path: 'preset://tts/supertonic-3',
+    languages: [
+      'en',
+      'ko',
+      'ja',
+      'ar',
+      'bg',
+      'cs',
+      'da',
+      'de',
+      'el',
+      'es',
+      'et',
+      'fi',
+      'fr',
+      'hi',
+      'hr',
+      'hu',
+      'id',
+      'it',
+      'lt',
+      'lv',
+      'nl',
+      'pl',
+      'pt',
+      'ro',
+      'ru',
+      'sk',
+      'sl',
+      'sv',
+      'tr',
+      'uk',
+      'vi',
+    ],
+    capabilities: [
+      'speech',
+      'multilingual',
+      'on-device',
+      'voice-styles',
+      'expression-tags',
+      'sentence-chunking',
+    ],
     isDefault: true,
     metadata: {
       'preset': true,
       'installed': false,
-      'description': 'Multilingual sherpa-onnx TTS preset.',
+      'provider': 'Supertone',
+      'source': 'https://huggingface.co/Supertone/supertonic-3',
+      'demo': 'https://huggingface.co/spaces/Supertone/supertonic-3',
+      'license': 'OpenRAIL-M',
+      'defaultVoice': 'M1',
+      'voiceStyles': ['F1', 'F2', 'F3', 'F4', 'F5', 'M1', 'M2', 'M3', 'M4', 'M5'],
+      'requiredFiles': [
+        'onnx/duration_predictor.onnx',
+        'onnx/text_encoder.onnx',
+        'onnx/vector_estimator.onnx',
+        'onnx/vocoder.onnx',
+        'onnx/tts.json',
+        'onnx/unicode_indexer.json',
+      ],
+      'description': 'Supertonic 3 multilingual on-device ONNX TTS preset.',
     },
   );
 
@@ -86,7 +139,12 @@ class DefaultModels {
   static const all = <ModelDescriptor>[llm, stt, tts, image];
 
   static List<ModelDescriptor> mergeWithInstalled(List<ModelDescriptor> existing) {
-    final result = <ModelDescriptor>[...existing];
+    // Replace the old Sherpa VITS starter preset with Supertonic 3, while
+    // preserving any real TTS model the user imported themselves.
+    final result = <ModelDescriptor>[
+      for (final model in existing)
+        if (!_isLegacyTtsPreset(model)) model,
+    ];
 
     for (final type in ModelType.values) {
       final sameType = result.where((m) => m.type == type).toList();
@@ -106,6 +164,14 @@ class DefaultModels {
     }
 
     return result;
+  }
+
+  static bool _isLegacyTtsPreset(ModelDescriptor model) {
+    if (model.type != ModelType.tts || !model.path.startsWith('preset://')) {
+      return false;
+    }
+    return model.id == 'preset-sherpa-vits-multilingual' ||
+        model.path == 'preset://tts/sherpa-vits-multilingual';
   }
 
   static ModelDescriptor _forType(ModelType type) => switch (type) {
