@@ -28,11 +28,19 @@ void main() {
     expect(restored.quantization, 'Q4_K_M');
   });
 
-  test('wire parsing keeps Whisper separate from llama.cpp GGUF', () {
+  test('wire parsing keeps native runtimes separate', () {
     expect(RuntimeKindWire.fromWire('whisper.cpp'), RuntimeKind.whisperCpp);
     expect(ModelFormatWire.fromWire('ggml-bin'), ModelFormat.ggmlBin);
     expect(RuntimeKindWire.fromWire('llama.cpp'), RuntimeKind.llamaCpp);
     expect(ModelFormatWire.fromWire('gguf'), ModelFormat.gguf);
+    expect(
+      RuntimeKindWire.fromWire('supertonic-onnx'),
+      RuntimeKind.supertonicOnnx,
+    );
+    expect(
+      RuntimeKindWire.fromWire('supertonic-3'),
+      RuntimeKind.supertonicOnnx,
+    );
   });
 
   test('queued scheduler request can be cancelled without hanging', () async {
