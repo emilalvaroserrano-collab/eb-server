@@ -32,19 +32,29 @@ jobs:
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
-      - name: Package APK for repository
+      - name: Build Android release APK
+        run: flutter build apk --release
+      - name: Upload Android release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: eburon-hub-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Package APKs for repository
         if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip apk]')
         run: |
           mkdir -p releases
           cd build/app/outputs/flutter-apk
           zip -9 "$GITHUB_WORKSPACE/releases/Eburon-Hub-debug-apk.zip" app-debug.apk
-      - name: Commit APK archive to main
+          zip -9 "$GITHUB_WORKSPACE/releases/Eburon-Hub-release-apk.zip" app-release.apk
+      - name: Commit APK archives to main
         if: github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip apk]')
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add releases/Eburon-Hub-debug-apk.zip
-          git commit -m "build: add Eburon Hub debug APK archive [skip apk]"
+          git add releases/Eburon-Hub-debug-apk.zip releases/Eburon-Hub-release-apk.zip
+          git commit -m "build: add Eburon Hub APK archives [skip apk]"
           git pull --rebase origin main
           git push origin HEAD:main
 
