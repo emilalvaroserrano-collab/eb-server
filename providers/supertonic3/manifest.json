@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "id": "supertone-supertonic-3",
+  "name": "Supertonic 3",
+  "version": "3",
+  "type": "tts",
+  "runtime": "supertonic-onnx",
+  "architecture": "supertonic-3",
+  "format": "onnx-package",
+  "languages": [
+    "en", "ko", "ja", "ar", "bg", "cs", "da", "de", "el", "es",
+    "et", "fi", "fr", "hi", "hr", "hu", "id", "it", "lt", "lv",
+    "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi"
+  ],
+  "capabilities": [
+    "speech",
+    "multilingual",
+    "on-device",
+    "voice-styles",
+    "expression-tags",
+    "sentence-chunking"
+  ],
+  "files": {
+    "duration_predictor": "onnx/duration_predictor.onnx",
+    "text_encoder": "onnx/text_encoder.onnx",
+    "vector_estimator": "onnx/vector_estimator.onnx",
+    "vocoder": "onnx/vocoder.onnx",
+    "tts_config": "onnx/tts.json",
+    "unicode_indexer": "onnx/unicode_indexer.json",
+    "voice_f1": "voice_styles/F1.json",
+    "voice_f2": "voice_styles/F2.json",
+    "voice_f3": "voice_styles/F3.json",
+    "voice_f4": "voice_styles/F4.json",
+    "voice_f5": "voice_styles/F5.json",
+    "voice_m1": "voice_styles/M1.json",
+    "voice_m2": "voice_styles/M2.json",
+    "voice_m3": "voice_styles/M3.json",
+    "voice_m4": "voice_styles/M4.json",
+    "voice_m5": "voice_styles/M5.json"
+  },
+  "provider": {
+    "name": "Supertone",
+    "model": "Supertone/supertonic-3",
+    "model_url": "https://huggingface.co/Supertone/supertonic-3",
+    "demo_url": "https://huggingface.co/spaces/Supertone/supertonic-3",
+    "license": "OpenRAIL-M"
+  },
+  "tts": {
+    "default_voice": "M1",
+    "voice_styles": ["F1", "F2", "F3", "F4", "F5", "M1", "M2", "M3", "M4", "M5"],
+    "expression_tags": ["laugh", "breath", "sigh"],
+    "streaming_strategy": "sentence-chunked"
+  }
+}
