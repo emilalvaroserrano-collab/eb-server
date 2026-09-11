@@ -1,0 +1,32 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Platform generated
+android/.gradle/
+ios/Pods/
+ios/.symlinks/
+
+# Models / generated media
+models/
+*.gguf
+*.safetensors
+*.ckpt
+*.onnx
+*.bin
+*.eburonmodel
+generated/
+
+# OS
+.DS_Store
+Thumbs.db
