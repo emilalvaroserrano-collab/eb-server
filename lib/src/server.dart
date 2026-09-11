@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'models.dart';
 import 'runtime.dart';
@@ -13,18 +14,29 @@ typedef ChatStreamHandler = Stream<String> Function(
   CancellationToken cancellationToken,
 );
 
+typedef SpeechStreamHandler = Stream<AudioChunk> Function(
+  String text, {
+  String? voice,
+  String? language,
+  double speed,
+  CancellationToken? cancellationToken,
+});
+
 class LocalApiServer {
   LocalApiServer({
     required List<ModelDescriptor> Function() models,
     required Future<List<RuntimeHealth>> Function() runtimeHealth,
     ChatStreamHandler? chat,
+    SpeechStreamHandler? speech,
   })  : _models = models,
         _runtimeHealth = runtimeHealth,
-        _chat = chat;
+        _chat = chat,
+        _speech = speech;
 
   final List<ModelDescriptor> Function() _models;
   final Future<List<RuntimeHealth>> Function() _runtimeHealth;
   ChatStreamHandler? _chat;
+  SpeechStreamHandler? _speech;
   HttpServer? _server;
   AppSettings _settings = const AppSettings();
   final StreamController<ServerActivity> _activity =
@@ -36,6 +48,7 @@ class LocalApiServer {
   Stream<ServerActivity> get activity => _activity.stream;
 
   void setChatHandler(ChatStreamHandler? handler) => _chat = handler;
+  void setSpeechHandler(SpeechStreamHandler? handler) => _speech = handler;
 
   Future<String?> lanUrl() async {
     final serverPort = _server?.port ?? _settings.serverPort;
@@ -118,7 +131,7 @@ class LocalApiServer {
       } else if (request.method == 'POST' && path == '/v1/audio/transcriptions') {
         await _notReady(request.response, 'STT native adapter');
       } else if (request.method == 'POST' && path == '/v1/audio/speech') {
-        await _notReady(request.response, 'TTS native adapter');
+        await _speechEndpoint(request);
       } else if (request.method == 'POST' &&
           (path == '/v1/images/generations' || path == '/v1/images/edits')) {
         await _notReady(request.response, 'stable-diffusion.cpp adapter');
@@ -349,6 +362,99 @@ class LocalApiServer {
     } finally {
       await cancellation.dispose();
     }
+  }
+
+  Future<void> _speechEndpoint(HttpRequest request) async {
+    final speech = _speech;
+    if (speech == null) {
+      await _notReady(request.response, 'TTS provider / loaded TTS model');
+      return;
+    }
+
+    final payload = jsonDecode(await utf8.decoder.bind(request).join())
+        as Map<String, dynamic>;
+    final input = payload['input']?.toString().trim() ?? '';
+    if (input.isEmpty) {
+      await _json(request.response, HttpStatus.badRequest, _error(
+        'input is required',
+        'invalid_request_error',
+      ));
+      return;
+    }
+
+    final voice = payload['voice']?.toString();
+    final language = payload['language']?.toString();
+    final speed = (payload['speed'] as num?)?.toDouble() ?? 1.0;
+    final format = (payload['response_format']?.toString() ?? 'wav').toLowerCase();
+    if (format != 'wav' && format != 'pcm') {
+      await _json(request.response, HttpStatus.badRequest, _error(
+        'Unsupported response_format: $format. Supported: wav, pcm',
+        'invalid_request_error',
+      ));
+      return;
+    }
+
+    final cancellation = CancellationToken();
+    unawaited(request.response.done.whenComplete(cancellation.cancel));
+    final pcm = BytesBuilder(copy: false);
+    var sampleRate = 44100;
+    try {
+      await for (final chunk in speech(
+        input,
+        voice: voice,
+        language: language,
+        speed: speed,
+        cancellationToken: cancellation,
+      )) {
+        cancellation.throwIfCancelled();
+        sampleRate = chunk.sampleRate;
+        pcm.add(chunk.bytes);
+      }
+
+      final pcmBytes = pcm.takeBytes();
+      final output = format == 'pcm' ? pcmBytes : _wavPcm16(pcmBytes, sampleRate);
+      request.response.statusCode = HttpStatus.ok;
+      request.response.headers
+        ..contentType = ContentType(
+          'audio',
+          format == 'wav' ? 'wav' : 'L16',
+        )
+        ..contentLength = output.length;
+      request.response.add(output);
+      await request.response.close();
+    } finally {
+      await cancellation.dispose();
+    }
+  }
+
+  Uint8List _wavPcm16(Uint8List pcm, int sampleRate) {
+    const channels = 1;
+    const bitsPerSample = 16;
+    final dataLength = pcm.length;
+    final out = Uint8List(44 + dataLength);
+    final data = ByteData.sublistView(out);
+
+    void ascii(int offset, String value) {
+      for (var i = 0; i < value.length; i++) {
+        out[offset + i] = value.codeUnitAt(i);
+      }
+    }
+
+    ascii(0, 'RIFF');
+    data.setUint32(4, 36 + dataLength, Endian.little);
+    ascii(8, 'WAVE');
+    ascii(12, 'fmt ');
+    data.setUint32(16, 16, Endian.little);
+    data.setUint16(20, 1, Endian.little);
+    data.setUint16(22, channels, Endian.little);
+    data.setUint32(24, sampleRate, Endian.little);
+    data.setUint32(28, sampleRate * channels * (bitsPerSample ~/ 8), Endian.little);
+    data.setUint16(32, channels * (bitsPerSample ~/ 8), Endian.little);
+    data.setUint16(34, bitsPerSample, Endian.little);
+    ascii(36, 'data');
+    data.setUint32(40, dataLength, Endian.little);
+    out.setRange(44, out.length, pcm);
+    return out;
   }
 
   Future<void> _realtimeSocket(HttpRequest request) async {
