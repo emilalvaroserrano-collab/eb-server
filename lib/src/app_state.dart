@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import 'default_models.dart';
 import 'models.dart';
+import 'providers/supertonic3_engine.dart';
 import 'runtime.dart';
 import 'server.dart';
 import 'storage.dart';
@@ -14,6 +15,12 @@ final settingsServiceProvider = Provider((ref) => SettingsService());
 final modelStoreProvider = Provider((ref) => ModelStore());
 final modelImporterProvider = Provider((ref) => ModelImporter());
 final runtimeManagerProvider = Provider((ref) => RuntimeManager());
+
+final supertonic3EngineProvider = Provider<Supertonic3Engine>((ref) {
+  final engine = Supertonic3Engine();
+  ref.onDispose(() => unawaited(engine.unload()));
+  return engine;
+});
 
 final inferenceSchedulerProvider = Provider((ref) {
   final scheduler = InferenceScheduler();
@@ -34,6 +41,7 @@ final modelsProvider =
     store: ref.read(modelStoreProvider),
     importer: ref.read(modelImporterProvider),
     runtimeManager: ref.read(runtimeManagerProvider),
+    supertonic3: ref.read(supertonic3EngineProvider),
   );
 });
 
@@ -41,6 +49,33 @@ final localApiServerProvider = Provider<LocalApiServer>((ref) {
   final server = LocalApiServer(
     models: () => ref.read(modelsProvider),
     runtimeHealth: ref.read(runtimeManagerProvider).health,
+    speech: (
+      text, {
+      voice,
+      language,
+      speed = 1.0,
+      cancellationToken,
+    }) {
+      final models = ref.read(modelsProvider);
+      final ready = models.any(
+        (model) =>
+            model.type == ModelType.tts &&
+            model.runtime == RuntimeKind.supertonicOnnx &&
+            model.loaded,
+      );
+      if (!ready) {
+        return Stream<AudioChunk>.error(
+          StateError('No loaded Supertonic 3 TTS model.'),
+        );
+      }
+      return ref.read(supertonic3EngineProvider).synthesize(
+            text,
+            voice: voice,
+            language: language,
+            speed: speed,
+            cancellationToken: cancellationToken,
+          );
+    },
   );
   ref.onDispose(() => unawaited(server.dispose()));
   return server;
@@ -104,14 +139,17 @@ class ModelsNotifier extends StateNotifier<List<ModelDescriptor>> {
     required ModelStore store,
     required ModelImporter importer,
     required RuntimeManager runtimeManager,
+    required Supertonic3Engine supertonic3,
   })  : _store = store,
         _importer = importer,
         _runtimeManager = runtimeManager,
+        _supertonic3 = supertonic3,
         super(const []);
 
   final ModelStore _store;
   final ModelImporter _importer;
   final RuntimeManager _runtimeManager;
+  final Supertonic3Engine _supertonic3;
 
   Future<void> load() async {
     final stored = await _store.load();
@@ -176,6 +214,28 @@ class ModelsNotifier extends StateNotifier<List<ModelDescriptor>> {
       );
     }
 
+    if (model.runtime == RuntimeKind.supertonicOnnx) {
+      if (model.loaded) {
+        await _supertonic3.unload();
+        state = [
+          for (final item in state)
+            if (item.id == id) item.copyWith(loaded: false) else item,
+        ];
+      } else {
+        await _supertonic3.load(model);
+        state = [
+          for (final item in state)
+            if (item.type == ModelType.tts &&
+                item.runtime == RuntimeKind.supertonicOnnx)
+              item.copyWith(loaded: item.id == id)
+            else
+              item,
+        ];
+      }
+      await _persist();
+      return;
+    }
+
     if (!_runtimeManager.bridge.available) {
       throw StateError(
         'Native runtime bridge is not linked. Build libeburon_runtime for this platform first.',
@@ -191,6 +251,10 @@ class ModelsNotifier extends StateNotifier<List<ModelDescriptor>> {
   Future<void> delete(String id) async {
     final model = state.where((item) => item.id == id).firstOrNull;
     if (model == null) return;
+
+    if (model.runtime == RuntimeKind.supertonicOnnx && model.loaded) {
+      await _supertonic3.unload();
+    }
 
     if (!model.path.startsWith('preset://')) {
       final type = FileSystemEntity.typeSync(model.path);
