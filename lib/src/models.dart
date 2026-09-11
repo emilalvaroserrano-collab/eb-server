@@ -3,6 +3,7 @@ enum ModelType { llm, stt, tts, image }
 enum RuntimeKind {
   llamaCpp,
   sherpaOnnx,
+  supertonicOnnx,
   whisperCpp,
   stableDiffusionCpp,
   unknown,
@@ -39,6 +40,7 @@ extension RuntimeKindWire on RuntimeKind {
   String get wireName => switch (this) {
         RuntimeKind.llamaCpp => 'llama.cpp',
         RuntimeKind.sherpaOnnx => 'sherpa-onnx',
+        RuntimeKind.supertonicOnnx => 'supertonic-onnx',
         RuntimeKind.whisperCpp => 'whisper.cpp',
         RuntimeKind.stableDiffusionCpp => 'stable-diffusion.cpp',
         RuntimeKind.unknown => 'unknown',
@@ -47,6 +49,11 @@ extension RuntimeKindWire on RuntimeKind {
   static RuntimeKind fromWire(String value) => switch (value.toLowerCase()) {
         'llama.cpp' || 'llama-cpp' => RuntimeKind.llamaCpp,
         'sherpa-onnx' || 'sherpa_onnx' => RuntimeKind.sherpaOnnx,
+        'supertonic' ||
+        'supertonic-3' ||
+        'supertonic-onnx' ||
+        'supertonic_onnx' =>
+          RuntimeKind.supertonicOnnx,
         'whisper.cpp' || 'whisper-cpp' => RuntimeKind.whisperCpp,
         'stable-diffusion.cpp' || 'stable_diffusion.cpp' || 'sd.cpp' =>
           RuntimeKind.stableDiffusionCpp,
