@@ -36,6 +36,7 @@ abstract class TtsEngine {
   Stream<AudioChunk> synthesize(
     String text, {
     String? voice,
+    String? language,
     double speed = 1.0,
     CancellationToken? cancellationToken,
   });
@@ -407,19 +408,27 @@ class RuntimeManager {
   final NativeRuntimeBridge bridge;
 
   Future<List<RuntimeHealth>> health() async {
-    final available = bridge.available;
-    final message = available
+    final nativeAvailable = bridge.available;
+    final nativeMessage = nativeAvailable
         ? 'Eburon native bridge loaded'
         : 'Native bridge not linked yet: ${bridge.error ?? 'unknown error'}';
+
     return RuntimeKind.values
         .where((runtime) => runtime != RuntimeKind.unknown)
-        .map(
-          (runtime) => RuntimeHealth(
+        .map((runtime) {
+          if (runtime == RuntimeKind.supertonicOnnx) {
+            return const RuntimeHealth(
+              runtime: RuntimeKind.supertonicOnnx,
+              available: true,
+              message: 'Flutter ONNX Runtime provider available',
+            );
+          }
+          return RuntimeHealth(
             runtime: runtime,
-            available: available,
-            message: message,
-          ),
-        )
+            available: nativeAvailable,
+            message: nativeMessage,
+          );
+        })
         .toList(growable: false);
   }
 }
